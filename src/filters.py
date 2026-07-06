@@ -2,6 +2,7 @@ import numpy as np
 
 from .transforms import stft, istft
 from .utils import hann_window
+from scipy.signal import iirnotch, lfilter
 
 def spectral_subtraction(
     signal: np.ndarray,
@@ -90,3 +91,81 @@ def wiener_filter(
 
     # 7. Reconstruct
     return istft(X_clean, hop_length = hop_length, window_fn = window_fn, original_length = len(signal))
+
+def notch_comb_filter(
+        signal: np.ndarray,
+        sample_rate: int,
+        fundamental: int = 60,
+        n_harmonics: int = 10,
+        notch_width: float = 2.0
+) -> np.ndarray:
+    
+    filtered = signal.astype(np.float32).copy()
+    nyquist = sample_rate / 2
+    
+    for k in range(1, n_harmonics + 1):
+        frequency = k * fundamental
+
+        # Ignore harmonics above Nyquist
+        if frequency >= nyquist:
+            break
+
+        # Quality factor
+        Q = frequency / notch_width
+        w0 = frequency / nyquist
+
+        b, a = iirnotch(w0, Q)
+        filtered = lfilter(b, a, filtered)
+
+    return filtered
+
+def detect_hum(
+        signal: np.ndarray,
+        sample_rate: int,
+        n_fft: int = 4096,
+        hop_length: int = 1024,
+        n_harmonics: int = 6
+) -> bool:
+    
+    spec = stft(signal, n_fft=n_fft, hop_length=hop_length)
+    power = np.abs(spec) ** 2
+    average_power = power.mean(axis=1)
+    freqs = np.fft.rfftfreq(
+        n_fft,
+        d=1/sample_rate
+    )
+
+    best_freq = None
+    best_score = -np.inf
+
+    for fundamental in (50, 60):
+        score = 0
+
+        for h in range(1, n_harmonics + 1):
+            f = h * fundamental
+
+            if f >= sample_rate / 2:
+                break
+
+            idx = np.argmin(np.abs(freqs - f))
+
+            peak = average_power[idx]
+
+            left = max(0, idx - 2)
+            right = min(len(average_power), idx + 3)
+
+            neighborhood = average_power[left:right]
+
+            background = (neighborhood.sum() - peak) / max(len(neighborhood) - 1, 1)
+            score += peak / (background + 1e-10)
+
+        if score > best_score:
+            best_score = score
+            best_freq = fundamental
+
+    confidence = min(best_score / (5 * n_harmonics), 1.0)
+
+    if confidence < 0.4:
+        return None, confidence
+    
+    return best_freq, confidence
