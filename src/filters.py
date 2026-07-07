@@ -169,3 +169,42 @@ def detect_hum(
         return None, confidence
     
     return best_freq, confidence
+
+def detect_clicks(
+        signal: np.ndarray,
+        sample_rate: int,
+        threshold_factor: float = 6.0,
+        window_ms: float = 5.0
+) -> np.ndarray:
+    signal = np.asarray(signal, dtype=np.float32)
+    window = max(1, int(sample_rate * window_ms / 1000))
+
+    squared = signal ** 2
+    kernel = np.ones(window) / window
+
+    local_power = np.convolve(
+        squared,
+        kernel,
+        mode="same"
+    )
+
+    local_rms = np.sqrt(local_power)
+
+    # Robust baseline
+    baseline = np.median(local_rms)
+    threshold = threshold_factor * baseline
+    click_mask = local_rms > threshold
+
+    # Dilate by 2 ms
+    dilation = max(1, int(sample_rate * 0.002))
+    kernel = np.ones(dilation)
+
+    click_mask = (
+        np.convolve(
+            click_mask.astype(np.float32),
+            kernel,
+            mode="same"
+        ) 
+        > 0
+    )
+    return click_mask
