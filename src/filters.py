@@ -208,3 +208,37 @@ def detect_clicks(
         > 0
     )
     return click_mask
+
+def repair_clicks(
+    signal: np.ndarray,
+    click_mask: np.ndarray
+) -> np.ndarray:
+    
+    repaired = signal.copy()
+    indices = np.where(click_mask)[0]
+
+    if len(indices) == 0:
+        return repaired
+    
+    groups = np.split(
+        indices,
+        np.where(np.diff(indices) != 1)[0] + 1
+    )
+
+    for group in groups:
+        start = group[0]
+        end = group[-1]
+        
+        if start == 0 or end == len(signal) - 1:
+            continue
+
+        left = repaired[start-1]
+        right = repaired[end+1]
+
+        repaired[start:end+1] = np.linspace(
+            left,
+            right,
+            end-start+1
+        )
+    
+    return repaired
