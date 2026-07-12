@@ -322,3 +322,25 @@ def simple_vad(
             vad_labels.append(0)
 
     return np.array(vad_labels)
+
+def adaptive_noise_estimation(
+        complex_spectrogram,
+        vad_labels,
+        smoothing = 0.95
+):
+    power_spectrum = np.abs(complex_spectrogram) ** 2
+    n_freq_bins, n_frames = power_spectrum.shape
+    noise_estimate = np.zeroes_like(power_spectrum)
+
+    # Initialize using first frame
+    noise_estimate[:,0] = power_spectrum[:,0]
+
+    for t in range(1, n_frames):
+        if vad_labels[t] == 0:
+            noise_estimate[:,t] = (
+                smoothing * noise_estimate[:, t-1] + (1-smoothing) * power_spectrum[:,t]
+            )
+        else:
+            noise_estimate[:,t] = noise_estimate[:,t-1]
+    
+    return noise_estimate
