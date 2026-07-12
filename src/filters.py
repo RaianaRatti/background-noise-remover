@@ -242,3 +242,83 @@ def repair_clicks(
         )
     
     return repaired
+
+def simple_vad(
+        signal: np.ndarray,
+        sample_rate: int,
+        frame_length_ms: int = 25,
+        hop_length_ms: int = 15,
+        energy_threshold = None
+) -> np.ndarray: # array of 0/1 per frame
+    
+    frame_length = int(sample_rate * frame_length_ms / 1000)
+    hop_length = int(sample_rate * hop_length_ms / 1000)
+
+    vad_labels = []
+
+    energies = []
+    zcrs = []
+    flatnesses = []
+
+    # First pass: Compute Features
+    for start in range(
+        0,
+        len(signal) - frame_length,
+        hop_length
+    ):
+        
+        frame = signal[start : start+frame_length]
+        
+        # 1. Short-term energy
+        energy = np.sum(frame ** 2)
+
+        # 2. Zero crossing rate
+        zcr = np.sum(
+            np.abs(
+                np.sign(frame[1:]) -
+                np.sign(frame[:-1])
+            )
+        ) / len(frame)
+
+        # 3. Spectral Flatness
+        spectrum = np.abs(np.fft.rfft(frame)) + 1e-10
+
+        geometric_mean = np.exp(
+            np.mean(np.log(spectrum))
+        )
+
+        arithmetic_mean = np.mean(spectrum)
+        flatness = geometric_mean / arithmetic_mean
+
+        energies.append(energy)
+        zcrs.append(zcr)
+        flatnesses.append(flatness) 
+
+        # 4. Automatic threshold
+        if energy_threshold is None:
+            energy_threshold = np.median(energies) * 2
+
+    # Second Pass: Classify
+    for energy, zcr, flatness in zip(
+        energies,
+        zcrs,
+        flatnesses
+    ):
+        speech_votes = 0
+
+        if energy > energy_threshold:
+            speech_votes += 1
+
+        if zcr > 0.05:
+            speech_votes += 1
+
+        if flatness < 0.5:
+            speech_votes += 1
+
+        # Majority vote
+        if speech_votes >= 2:
+            vad_labels.append(1)
+        else:
+            vad_labels.append(0)
+
+    return np.array(vad_labels)
