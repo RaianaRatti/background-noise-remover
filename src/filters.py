@@ -24,8 +24,11 @@ def spectral_subtraction(
     # 3. Noisy power
     power_noisy = magnitude ** 2
 
-    # 4. Broadcast noise profile
-    power_noise = noise_profile[:, np.newaxis]
+    # 4. Broadcast noise profile if it is a single static spectrum
+    if noise_profile.ndim == 1:
+        power_noise = noise_profile[:, np.newaxis]
+    else:
+        power_noise = noise_profile
 
     # 5. Spectral subtraction
     power_clean = power_noisy - alpha * power_noise
@@ -69,22 +72,31 @@ def wiener_filter(
     window_fn = hann_window
 ) -> np.ndarray:
 
-    X = stft(signal, n_fft=n_fft, hop_length=hop_length, window_fn=window_fn)
-    power_noisy = np.abs(X) ** 2
+    # 1. STFT
+    X = stft(signal, n_fft = n_fft, hop_length = hop_length, window_fn = window_fn)
 
+    # 2. Noisy power spectrum
+    power_noisy = np.abs(X) ** 2
+    
+    # 3. Broadcast noise profile if it is a single static spectrum
     if noise_profile.ndim == 1:
         power_noise = noise_profile[:, np.newaxis]
     else:
         power_noise = noise_profile
 
+    # 4. Estimate SNR
     snr = (power_noisy - power_noise) / (power_noise + 1e-10)
     snr = np.maximum(snr, 0.0)
 
+    # 5. Wiener gain
     wiener_gain = snr / (snr + 1)
+
+    # 6. Temporal smoothing applied
     gain_smoothed = exponential_smooth(wiener_gain, smoothing)
     X_clean = gain_smoothed * X
 
-    return istft(X_clean, hop_length=hop_length, window_fn=window_fn, original_length=len(signal))
+    # 7. Reconstruct
+    return istft(X_clean, hop_length = hop_length, window_fn = window_fn, original_length = len(signal))
 
 def notch_comb_filter(
         signal: np.ndarray,
@@ -184,8 +196,8 @@ def detect_clicks(
 
     local_rms = np.sqrt(local_power)
 
-    # Robust baseline
-    baseline = np.median(local_rms)
+    # Robust baseline (low percentile so loud speech doesn't drag it up)
+    baseline = np.percentile(local_rms, 25)
     threshold = threshold_factor * baseline
     click_mask = local_rms > threshold
 
@@ -199,6 +211,60 @@ def detect_clicks(
             kernel,
             mode="same"
         ) 
+        > 0
+    )
+    return click_mask
+
+def detect_clicks_ar(
+        signal: np.ndarray,
+        sample_rate: int,
+        ar_order: int = None,
+        window_ms: float = 30.0,
+        hop_ms: float = 5.0,
+        threshold_factor: float = 6.0
+) -> np.ndarray:
+    signal = np.asarray(signal, dtype=np.float64)
+
+    if ar_order is None:
+        ar_order = max(1, sample_rate // 1000)
+
+    window = max(ar_order + 1, int(sample_rate * window_ms / 1000))
+    hop = max(1, int(sample_rate * hop_ms / 1000))
+
+    click_mask = np.zeros(len(signal), dtype=bool)
+
+    for start in range(0, len(signal) - window + 1, hop):
+        segment = signal[start:start + window]
+
+        # Design matrix: predict segment[n] from its p preceding samples
+        X = np.column_stack([
+            segment[ar_order - k - 1 : len(segment) - k - 1]
+            for k in range(ar_order)
+        ])
+        y = segment[ar_order:]
+
+        coeffs, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+        residual = y - X @ coeffs
+
+        # Robust local baseline: median absolute deviation of the residual
+        med = np.median(residual)
+        mad = np.median(np.abs(residual - med))
+        robust_sigma = 1.4826 * mad
+
+        local_mask = np.abs(residual - med) > threshold_factor * (robust_sigma + 1e-10)
+
+        click_mask[start + ar_order : start + window] |= local_mask
+
+    # Dilate by 2 ms
+    dilation = max(1, int(sample_rate * 0.002))
+    kernel = np.ones(dilation)
+
+    click_mask = (
+        np.convolve(
+            click_mask.astype(np.float32),
+            kernel,
+            mode="same"
+        )
         > 0
     )
     return click_mask

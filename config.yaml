@@ -1,20 +1,49 @@
 pipeline:
-  normalize_input: true
+  # Peak-normalize the signal to -1/+1 before and after processing.
+  normalize_input: false
+  normalize_output: false
 
+  # --------------------------------------------------
+  # Click / pop removal
+  # --------------------------------------------------
   click_removal:
     enabled: true
-    threshold_factor: 6.0
+    threshold_factor: 6.0    # local RMS must exceed threshold_factor * median RMS to count as a click
+    window_ms: 5.0           # window size used to compute local RMS energy
 
+  # --------------------------------------------------
+  # Hum removal (mains hum at 50/60 Hz and its harmonics)
+  # --------------------------------------------------
   hum_removal:
-    enabled: true
-    auto_detect: true
-    notch_width_hz: 2.0
+    enabled: false
+    auto_detect: true        # if true, detect_hum picks 50 Hz or 60 Hz automatically
+    fundamental: 60           # used only when auto_detect is false
+    notch_width_hz: 2.0       # width of each notch filter, in Hz
+    n_harmonics: 10           # number of harmonics the notch comb filter removes
 
+    # Only used when auto_detect is true, controls the detection STFT
+    detect_n_fft: 4096
+    detect_hop_length: 1024
+    detect_n_harmonics: 6     # number of harmonics checked when scoring 50 Hz vs 60 Hz
+
+  # --------------------------------------------------
+  # Background noise reduction
+  # --------------------------------------------------
   noise_reduction:
-    method: wiener
-    noise_estimation: adaptive
+    enabled: false
+    method: wiener             # "wiener" or "spectral_subtraction"
+    noise_estimation: adaptive # only "adaptive" is currently supported
+    window: hann                # "hann", "hamming", or "blackman"
     n_fft: 2048
     hop_length: 512
-    smoothing: 0.98
+    smoothing: 0.98             # temporal smoothing for the Wiener gain and the noise estimate
 
-  normalize_output: true
+    # Only used when method is "spectral_subtraction"
+    alpha: 2.0                  # over-subtraction factor
+    beta: 0.01                  # spectral floor, as a fraction of noisy power
+
+    # Voice activity detection, used to decide which frames update the noise estimate
+    vad:
+      frame_length_ms: 25
+      hop_length_ms: 15
+      energy_threshold: null    # null lets simple_vad set it automatically from the signal

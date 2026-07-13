@@ -6,22 +6,18 @@ import numpy as np
 from scipy.signal import resample_poly
 import math
 
-OUTPUT_DIR = Path("output/")
-
 def load_audio(path: Path) -> tuple[np.ndarray, int]: # samples, sample_rate
     samples, sample_rate = sf.read(path, dtype="float32")
 
     # Convert stereo / multi-channel audio to mono if needed
     if samples.ndim > 1:
         samples = samples.mean(axis=1)
-    
+
     return samples, sample_rate
 
 def save_audio(path: Path, samples: np.ndarray, sample_rate: int):
-    OUTPUT_DIR.mkdir(exist_ok=True)
-
-    output_path = OUTPUT_DIR / f"{path.stem}.wav"
-    sf.write(output_path, samples, sample_rate)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(path, samples, sample_rate)
 
 # sinc resampling
 def resample(samples: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
