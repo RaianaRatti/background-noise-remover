@@ -1,0 +1,20 @@
+pipeline:
+  normalize_input: true
+
+  click_removal:
+    enabled: true
+    threshold_factor: 6.0
+
+  hum_removal:
+    enabled: true
+    auto_detect: true
+    notch_width_hz: 2.0
+
+  noise_reduction:
+    method: wiener
+    noise_estimation: adaptive
+    n_fft: 2048
+    hop_length: 512
+    smoothing: 0.98
+
+  normalize_output: true
