@@ -6,7 +6,7 @@ import numpy as np
 from scipy.signal import resample_poly
 import math
 
-OUTPUT_DIR = "output/"
+OUTPUT_DIR = Path("output/")
 
 def load_audio(path: Path) -> tuple[np.ndarray, int]: # samples, sample_rate
     samples, sample_rate = sf.read(path, dtype="float32")

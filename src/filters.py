@@ -69,28 +69,22 @@ def wiener_filter(
     window_fn = hann_window
 ) -> np.ndarray:
 
-    # 1. STFT
-    X = stft(signal, n_fft = n_fft, hop_length = hop_length, window_fn = window_fn)
-
-    # 2. Noisy power spectrum
+    X = stft(signal, n_fft=n_fft, hop_length=hop_length, window_fn=window_fn)
     power_noisy = np.abs(X) ** 2
-    
-    # 3. Broadcast noise profile
-    power_noise = noise_profile[:, np.newaxis]
 
-    # 4. Estimate SNR
+    if noise_profile.ndim == 1:
+        power_noise = noise_profile[:, np.newaxis]
+    else:
+        power_noise = noise_profile
+
     snr = (power_noisy - power_noise) / (power_noise + 1e-10)
     snr = np.maximum(snr, 0.0)
 
-    # 5. Wiener gain
     wiener_gain = snr / (snr + 1)
-
-    # 6. Temporal smoothing applied
     gain_smoothed = exponential_smooth(wiener_gain, smoothing)
     X_clean = gain_smoothed * X
 
-    # 7. Reconstruct
-    return istft(X_clean, hop_length = hop_length, window_fn = window_fn, original_length = len(signal))
+    return istft(X_clean, hop_length=hop_length, window_fn=window_fn, original_length=len(signal))
 
 def notch_comb_filter(
         signal: np.ndarray,
@@ -330,7 +324,7 @@ def adaptive_noise_estimation(
 ):
     power_spectrum = np.abs(complex_spectrogram) ** 2
     n_freq_bins, n_frames = power_spectrum.shape
-    noise_estimate = np.zeroes_like(power_spectrum)
+    noise_estimate = np.zeros_like(power_spectrum)
 
     # Initialize using first frame
     noise_estimate[:,0] = power_spectrum[:,0]

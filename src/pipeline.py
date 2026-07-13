@@ -1,9 +1,9 @@
 class AudioCleaningPipeline:
-    def __init__(self, config, dict):
+    def __init__(self, config=None):
         self.config = config
         self.steps = []
 
-    def add_step(self, name, fn, enabled = True, params = {}):
+    def add_step(self, name, fn, enabled = True, params = None):
         if params is None:
             params = {}
         self.steps.append({
